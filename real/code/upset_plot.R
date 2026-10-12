@@ -10,6 +10,7 @@
 # CLI: Rscript real/code/upset_plot.R real/CRC/outcome/sig_family.csv CRC
 # CLI input paths are relative to the project root; output is plot/real/CRC_overlap.pdf.
 # Only PDF files are written; PNG output is not supported.
+# Missing parent directories of the output PDF are created automatically.
 
 project.root <- local({
   source.files <- vapply(sys.frames(), function(frame) {

@@ -2,7 +2,7 @@
 
 R code and processed data for the MetaQCAT simulation studies and real-data analyses of colorectal cancer (CRC) and inflammatory bowel disease (IBD).
 
-The repository includes the MetaQCAT source package, fitted simulation models, processed count tables, metadata, and taxonomy tables. Plotting scripts produce **PDF files only**.
+The repository includes the MetaQCAT source package, fitted simulation models, processed count tables, metadata, and taxonomy tables. Plotting scripts produce **PDF files only**. Generated figures are not bundled with the repository.
 
 ## Repository structure
 
@@ -37,12 +37,23 @@ real/
       tax.RData
   code/
     upset_plot.R
-plot/                             # PDF figures
 ```
 
 The simulation input tables are derived from the CRC data and are used with the fitted models to generate simulated counts. The composition plot uses the observed data in `real/CRC/data/`.
 
 All examples below assume that the working directory is the repository root. Scripts also locate the repository from their own file paths when run with `Rscript` or `source()`.
+
+### Generated output directories
+
+`plot/` is created locally when a plotting script saves a figure; it does not need to exist after cloning the repository. All three plotting scripts create missing output directories recursively before saving their PDFs:
+
+| Plotting script | Generated output location |
+| --- | --- |
+| `simulation/code/bar_plot.R` | `plot/simulation/*.pdf` |
+| `real/CRC/code/composition_plot.R` | `plot/real/CRC_composition.pdf` |
+| `real/code/upset_plot.R` | `plot/real/*_overlap.pdf`, or the PDF path supplied to the function |
+
+No manual directory creation is required. Simulation bar plots require simulation result CSVs, and UpSet plots require discovery results. If those inputs are absent, the scripts do not generate the corresponding figures. Generated files under `plot/real/` are excluded from Git by `.gitignore`.
 
 ## Installation
 
@@ -152,7 +163,7 @@ source("real/CRC/code/CRC_process.R")
 source("real/IBD/code/IBD_process.R")
 ```
 
-Both analyses run FE-MetaQCAT-O and RE-MetaQCAT-O with 1,000 permutations and 10 threads. Edit `n.threads` in their MetaQCAT calls for your machine. CRC results are stored in `CRC_FE` and `CRC_RE`; IBD results are stored in `IBD_FE` and `IBD_RE`. Their corresponding `*_pval` vectors contain lineage p-values for subsequent plotting.
+Both analyses run FE-MetaQCAT-O and RE-MetaQCAT-O with 1,000 permutations. Set `n.threads` in their MetaQCAT calls to suit your machine. CRC results are stored in `CRC_FE` and `CRC_RE`; IBD results are stored in `IBD_FE` and `IBD_RE`. Their corresponding `*_pval` vectors contain lineage p-values for subsequent plotting.
 
 The IBD workflow uses subject IDs to account for repeated measurements, splits HMP2 into pediatric and adult cohorts, and performs between-subject permutations.
 

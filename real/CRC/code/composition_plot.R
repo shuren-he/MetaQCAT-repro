@@ -2,6 +2,7 @@
 # Run: Rscript real/CRC/code/composition_plot.R
 # Input: real/CRC/data/{count.genus,tax,meta}.RData
 # Output: plot/real/CRC_composition.pdf (no PNGs, CSVs, or supplementary plots).
+# The output directory and any missing parent folders are created automatically.
 # Relative abundance is normalized within each family for each sample.
 # To load without writing the PDF: options(metaqcat.plot.source.only = TRUE)
 

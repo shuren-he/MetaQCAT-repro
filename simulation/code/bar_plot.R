@@ -2,6 +2,7 @@
 # Run from the project root: Rscript simulation/code/bar_plot.R
 # Settings below select permutation or asymptotic results and the rejection cutoff.
 # No simulation is run by this file. Only PDFs are saved to plot/simulation/.
+# Missing output directories are created automatically, including parent folders.
 # To load functions only: options(metaqcat.plot.source.only = TRUE); source(...)
 
 project.root <- local({
