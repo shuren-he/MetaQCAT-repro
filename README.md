@@ -163,7 +163,7 @@ source("real/CRC/code/CRC_process.R")
 source("real/IBD/code/IBD_process.R")
 ```
 
-Both analyses run FE-MetaQCAT-O and RE-MetaQCAT-O with 1,000 permutations. Set `n.threads` in their MetaQCAT calls to suit your machine. CRC results are stored in `CRC_FE` and `CRC_RE`; IBD results are stored in `IBD_FE` and `IBD_RE`. Their corresponding `*_pval` vectors contain lineage p-values for subsequent plotting.
+Both analyses run FE-MetaQCAT-O and RE-MetaQCAT-O with 1,000 permutations. Set `n.threads` in their MetaQCAT calls to suit your machine. CRC results are stored in `CRC_FE` and `CRC_RE`; IBD results are stored in `IBD_FE` and `IBD_RE`. Their corresponding `*_pval` vectors contain lineage p-values. The `*_qval` vectors are calculated using `qvalue::qvalue()` separately for FE and RE and are used to select discoveries for the UpSet plots.
 
 The IBD workflow uses subject IDs to account for repeated measurements, splits HMP2 into pediatric and adult cohorts, and performs between-subject permutations.
 
@@ -181,20 +181,20 @@ The single-page PDF contains two panels: Peptostreptococcaceae and Enterobacteri
 
 ### UpSet discovery plots
 
-After running the CRC analysis in R:
+The paper's UpSet plots compare discovered lineages with **q-value < 0.05**, using q-values calculated by the R `qvalue` package. After running the CRC analysis in R:
 
 ```r
 source("real/code/upset_plot.R")
-res <- discoveries_from_pvalues(
-  list(FE = CRC_FE_pval, RE = CRC_RE_pval),
-  alpha = 0.05, adjust.method = "BH"
+res <- list(
+  FE = names(CRC_FE_qval)[!is.na(CRC_FE_qval) & CRC_FE_qval < 0.05],
+  RE = names(CRC_RE_qval)[!is.na(CRC_RE_qval) & CRC_RE_qval < 0.05]
 )
 plot_discovery_upset(res, "plot/real/CRC_overlap.pdf")
 ```
 
-For IBD, run the IBD analysis in a separate session and replace the p-value vectors with `IBD_FE_pval` and `IBD_RE_pval`, saving to `plot/real/IBD_overlap.pdf`.
+For IBD, run the IBD analysis in a separate session and replace the q-value vectors with `IBD_FE_qval` and `IBD_RE_qval`, saving to `plot/real/IBD_overlap.pdf`.
 
-`discoveries_from_pvalues()` applies Benjamini-Hochberg adjustment across each method's p-value vector. Each vector must be named by lineage ID. You may also supply a named list of discovered lineage IDs directly to `plot_discovery_upset()` to compare additional methods. At least two methods must have discoveries to draw the plot.
+Each q-value vector must be named by lineage ID. The example selects discoveries directly from the calculated q-values; no additional BH adjustment is applied. You may also supply a named list of discovered lineage IDs directly to `plot_discovery_upset()` to compare additional methods. At least two methods must have discoveries to draw the plot.
 
 An existing binary discovery table can be read instead: the first column must contain lineage IDs, and the remaining named method columns must contain 0/1 indicators. For a table saved at `real/CRC/outcome/sig_family.csv`:
 

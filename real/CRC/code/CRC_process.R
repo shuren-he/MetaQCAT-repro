@@ -116,18 +116,11 @@ RE_Time = difftime(Sys.time(), RE_Time, units = "secs")
 
 CRC_FE_pval <- CRC_FE$lineage.pval[2,]
 
-CRC_FE_qval = rep(0,length(CRC_FE_pval))
-for(i in 1:length(CRC_FE_pval)){
-  CRC_FE_qval[i] <- p.adjust(CRC_FE_pval[i], method = 'BH')
-}
-
-names(CRC_FE_qval) <- names(CRC_FE_pval) 
+# q-values for the paper's discovery plots (qvalue package).
+CRC_FE_qval <- qvalue::qvalue(p = CRC_FE_pval)$qvalues
 
 
 CRC_RE_pval <- CRC_RE$lineage.pval[1,]
 
-CRC_RE_qval = rep(0,length(CRC_RE_pval))
-for(i in 1:length(CRC_RE_pval)){
-  CRC_RE_qval[i] <- p.adjust(CRC_RE_pval[i], method = 'BH')
-}
-names(CRC_RE_qval) <- names(CRC_RE_pval) 
+# q-values for the paper's discovery plots (qvalue package).
+CRC_RE_qval <- qvalue::qvalue(p = CRC_RE_pval)$qvalues

@@ -201,18 +201,11 @@ RE_Time = difftime(Sys.time(), RE_Time, units = "secs")
 
 IBD_FE_pval <- IBD_FE$lineage.pval[2,]
 
-IBD_FE_qval = rep(0,length(IBD_FE_pval))
-for( i in 1:length(IBD_FE_pval)){
-  IBD_FE_qval[i] <- p.adjust( IBD_FE_pval[i], method = 'BH')
-}
-
-names(IBD_FE_qval) <- names(IBD_FE_pval) 
+# q-values for the paper's discovery plots (qvalue package).
+IBD_FE_qval <- qvalue::qvalue(p = IBD_FE_pval)$qvalues
 
 
 IBD_RE_pval <- IBD_RE$lineage.pval[1,]
 
-IBD_RE_qval = rep(0,length(IBD_RE_pval))
-for( i in 1:length(IBD_RE_pval)){
-  IBD_RE_qval[i] <- p.adjust( IBD_RE_pval[i], method = 'BH')
-}
-names(IBD_RE_qval) <- names(IBD_RE_pval) 
+# q-values for the paper's discovery plots (qvalue package).
+IBD_RE_qval <- qvalue::qvalue(p = IBD_RE_pval)$qvalues

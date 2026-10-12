@@ -2,9 +2,12 @@
 # Source this file, then supply a named list of lineage IDs (one set per method).
 # Example after CRC_process.R:
 #   source("real/code/upset_plot.R")
-#   res <- discoveries_from_pvalues(list(FE = CRC_FE_pval, RE = CRC_RE_pval))
+#   res <- list(
+#     FE = names(CRC_FE_qval)[!is.na(CRC_FE_qval) & CRC_FE_qval < 0.05],
+#     RE = names(CRC_RE_qval)[!is.na(CRC_RE_qval) & CRC_RE_qval < 0.05]
+#   )
 #   plot_discovery_upset(res, file.path(project.root, "plot", "real", "CRC_overlap.pdf"))
-# IBD_FE_pval / IBD_RE_pval work the same way.
+# IBD_FE_qval / IBD_RE_qval work the same way. No further adjustment is applied.
 # Existing binary discovery CSVs can also be used:
 #   res <- read_discovery_sets("real/CRC/outcome/sig_family.csv")
 # CLI: Rscript real/code/upset_plot.R real/CRC/outcome/sig_family.csv CRC
