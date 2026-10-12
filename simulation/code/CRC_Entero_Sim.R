@@ -1,15 +1,7 @@
 rm(list=ls())
-library(doRNG)
-library(doParallel)
-library(foreach)
-library(HMP)
 library(MetaQCAT)
-library(MMUPHin)
-library(miLineage)
 
-# MetaQCAT() prints routine filtering notices with cat() and has no verbose
-# argument. Create a local equivalent with only cat() calls removed; filtering
-# and all statistical calculations remain unchanged.
+# Simulate and evaluate the FE/RE MetaQCAT components and omnibus tests.
 
 # Locate the project from this script (Rscript/source) or the working directory.
 # This keeps paths portable if the project folder is moved or renamed.
@@ -87,92 +79,6 @@ sim.time <- if (simulation.target == "power") 1000L else 5000L
 stu.num <- length(lst.num)
 output.dir <- file.path(project.root, "simulation", "outcome", "pos_part_res")
 dir.create(output.dir, recursive = TRUE, showWarnings = FALSE)
-
-Rarefy <- function (otu.tab, depth = min(rowSums(otu.tab)), seed = 1234){
-  # Rarefaction function: downsample to equal depth
-  #
-  # Args:
-  #		otu.tab: OTU count table, row - n sample, column - q OTU
-  #		depth: required sequencing depth
-  #
-  # Returns:
-  # 	otu.tab.rff: Rarefied OTU table
-  #		discard: labels of discarded samples
-  #
-  otu.tab <- as.matrix(otu.tab)
-  ind <- (rowSums(otu.tab) < depth)
-  sam.discard <- rownames(otu.tab)[ind]
-  otu.tab <- otu.tab[!ind, ]
-  set.seed(seed)
-  rarefy <- function(x, depth){
-    y <- sample(rep(1:length(x), x), depth)
-    y.tab <- table(y)
-    z <- numeric(length(x))
-    z[as.numeric(names(y.tab))] <- y.tab
-    z
-  }
-  otu.tab.rff <- t(apply(otu.tab, 1, rarefy, depth))
-  rownames(otu.tab.rff) <- rownames(otu.tab)
-  colnames(otu.tab.rff) <- colnames(otu.tab)
-  return(list(otu.tab.rff=otu.tab.rff, discard=sam.discard))
-}
-
-dm1.resample <- function(Y, case, n.perm=1000){
-
-  group.data = list(grp1 = Y[case==0,], grp2 = Y[case==1,] )
-  dm.stat = try(Xmcupo.sevsample(group.data)$`Xmcupo statistics`,
-                silent = TRUE)
-  if((!"try-error" %in% class(dm.stat)) & !is.na(dm.stat) ){
-
-    n.dm = 0
-    dm.acc = 0
-    #print("simulated stat:")
-    #set.seed(16)
-
-
-    for(k in 1:n.perm){
-
-      case.perm = sample(case)
-      group.data.perm = list(grp1 = Y[case.perm==0,], grp2 = Y[case.perm==1,] )
-      dm.stat.perm = try(
-        Xmcupo.sevsample(group.data.perm)$`Xmcupo statistics`,
-        silent = TRUE
-      )
-
-      if((!"try-error" %in% class(dm.stat.perm)) & !is.na(dm.stat.perm) ){
-
-        n.dm = n.dm + 1
-        if(dm.stat.perm >= dm.stat){
-          dm.acc = dm.acc + 1
-        }
-      }
-
-    }
-
-    if(n.dm<n.perm/2){
-      print("#replicate too small for dm test")
-    }
-
-    dm.Rpvalue = dm.acc/n.dm
-
-
-  }else{
-
-    dm.Rpvalue = NA
-
-  }
-
-  return(dm.Rpvalue)
-}
-
-F.test <- function(x){
-  x <- as.numeric(na.omit(x))
-  x <- x[is.finite(x) & x >= 0 & x <= 1]
-  if (length(x) == 0L) return(NA_real_)
-  if (any(x == 0)) return(0)
-  x.stat = -2 * sum(log(x))
-  return( 1 - pchisq(x.stat, df = 2 * length(x)) )
-}
 
 safe_test_call <- function(sim.cnt, test.fun, expected.length, test.label,
                            ...){
@@ -488,12 +394,6 @@ ACAT<-function(Pvals,Weights=NULL){
   return(pval)
 }
 
-meta.tab <- as.data.frame(meta)
-meta.tab$Sample_ID <- gsub("-", ".", meta$Sample_ID)
-meta.tab$External_ID <- gsub("-", ".", meta.tab$External_ID)
-rownames(meta.tab) <- paste0(meta.tab$Sample_ID,'.', meta.tab$External_ID)
-meta.tab.lst <- split.data.frame(meta.tab, meta.tab$Country)[study.names]
-
 meta.qcat.test <- function(sim.cnt, mod_gdm_lst, depth.pool, taxa.names,
                            lst.num, signal.size, signal.method, type,
                            direct = NULL, seed, simulated = NULL){
@@ -533,163 +433,9 @@ meta.qcat.test <- function(sim.cnt, mod_gdm_lst, depth.pool, taxa.names,
 
 }
 
-p.comb.test <- function(sim.cnt, mod_gdm_lst, depth.pool, taxa.names,
-                        lst.num, signal.size, signal.method, type,
-                        direct = NULL, seed, simulated = NULL){
-  if (is.null(simulated)) {
-    simulated <- simulate_crc_data(
-      sim.cnt, mod_gdm_lst, depth.pool, taxa.names, lst.num, signal.size,
-      signal.method, type, direct, seed
-    )
-  }
-  dat.simu.poured.tmp <- simulated$OTU
-  X.lst.tmp <- simulated$X
-  stu.num <- length(mod_gdm_lst)
-  score.pvalue.beta = NULL
-  score.pvalue.both = NULL
-  score.pvalue.beta.perm  = NULL
-  score.pvalue.both.perm = NULL
-  dm.pvalue = NULL
-  dm.pvalue.perm = NULL
-  ZIGDM.pvalue = NULL
-  ZIGDM.pvalue.perm = NULL
-  for(j in 1:stu.num){
-    Y = dat.simu.poured.tmp[[j]]
-    Y.rare = Rarefy(Y)$otu.tab.rff
-    X = X.lst.tmp[[j]]
-    tmp.q1 = try(
-      miLineage::QCAT(Y, X, 1, Tax = NULL, min.depth = 0,
-                     n.perm = n.perm),
-      silent = TRUE
-    )
-    tmp.q2 = try(
-      miLineage::QCAT_GEE(Y.rare, X, 1, X, 1, Tax = NULL,
-                          min.depth = 0, n.perm = n.perm),
-      silent = TRUE
-    )
-    tmp.dm.perm = try(
-      dm1.resample(Y, X, n.perm = n.perm),
-      silent = TRUE
-    )
-    tmp.ZIGDM = try(
-      miLineage::ZIGDM(
-        Y, as.matrix(X, ncol = 1), NULL, NULL, Tax = NULL,
-        X.index = 1, n.perm = n.perm
-      ),
-      silent = TRUE
-    )
-    Y = split.data.frame(Y,X)
-    tmp.dm = try(HMP::Xmcupo.sevsample(Y), silent = TRUE)
-    if(! "try-error" %in% class(tmp.q1)){
-      score.pvalue.beta = append(score.pvalue.beta,tmp.q1$pval[1])
-      score.pvalue.beta.perm = append(score.pvalue.beta.perm,tmp.q1$pval[2])
-    }
-    if(! "try-error" %in% class(tmp.q2)){
-      score.pvalue.both = append(score.pvalue.both, tmp.q2$pval[1])
-      score.pvalue.both.perm = append(score.pvalue.both.perm, tmp.q2$pval[2])
-    }
-    if(! "try-error" %in% class(tmp.dm)){
-      dm.pvalue = append(dm.pvalue, tmp.dm$`p value`)
-    }
-    if(! "try-error" %in% class(tmp.dm.perm)){
-      dm.pvalue.perm  = append(dm.pvalue.perm,tmp.dm.perm)
-    }
-    if(! "try-error" %in% class(tmp.ZIGDM)){
-      ZIGDM.pvalue = append(ZIGDM.pvalue, tmp.ZIGDM$pval[1])
-      ZIGDM.pvalue.perm = append(ZIGDM.pvalue.perm, tmp.ZIGDM$pval[2])
-    }
-  }
-  score.pvalue.q1 = F.test(na.omit(score.pvalue.beta))
-  score.pvalue.q1.perm = F.test(na.omit(score.pvalue.beta.perm))
-  score.pvalue.q2 = F.test(na.omit(score.pvalue.both))
-  score.pvalue.q2.perm = F.test(na.omit(score.pvalue.both.perm))
-  dm.pvalue = F.test(na.omit(dm.pvalue))
-  dm.pvalue.perm = F.test(na.omit(dm.pvalue.perm))
-  ZIGDM.pvalue = F.test(na.omit(ZIGDM.pvalue))
-  ZIGDM.pvalue.perm = F.test(na.omit(ZIGDM.pvalue.perm))
-  return(c(score.pvalue.q1,  score.pvalue.q2, dm.pvalue, ZIGDM.pvalue,
-           score.pvalue.q1.perm, score.pvalue.q2.perm, dm.pvalue.perm, ZIGDM.pvalue.perm))
-}
-
-cd.test <- function(sim.cnt, mod_gdm_lst, depth.pool, taxa.names, lst.num,
-                    meta.tab.lst, signal.size, signal.method, type,
-                    direct = NULL, seed, simulated = NULL){
-  if (is.null(simulated)) {
-    simulated <- simulate_crc_data(
-      sim.cnt, mod_gdm_lst, depth.pool, taxa.names, lst.num, signal.size,
-      signal.method, type, direct, seed
-    )
-  }
-  dat.simu.poured.tmp <- simulated$OTU
-  X.lst.tmp <- simulated$X
-  count.genus = do.call(rbind,dat.simu.poured.tmp)
-  meta.tab.lst.tmp <- Map(
-    function(dat, keep) dat[keep, , drop = FALSE],
-    meta.tab.lst, simulated$keep
-  )
-  meta.tab.tmp <- do.call(rbind, meta.tab.lst.tmp)
-  X = as.matrix(do.call(c,X.lst.tmp))
-  # MMUPHin must adjust for the simulated case/control assignment, not the
-  # original CRC labels stored in meta.rda.
-  meta.tab.tmp$Group <- factor(ifelse(X[, 1] == 1, "case", "control"))
-  otu.tab <-t(count.genus)
-  colnames(otu.tab) <- rownames(meta.tab.tmp)
-  fit_adjust_batch <- MMUPHin::adjust_batch(feature_abd = otu.tab,
-                                            batch = "Country",
-                                            covariates = "Group",
-                                            data = meta.tab.tmp,
-                                            control = list(verbose = FALSE))
-  taxa.MMUPHin <- fit_adjust_batch$feature_abd_adj
-  Y = t(taxa.MMUPHin)
-  Y.rare = Rarefy(Y)$otu.tab.rff
-  q1.MMUPHin = miLineage::QCAT(Y, X, 1, Tax = NULL,min.depth = 0, n.perm = n.perm)
-  q2.MMUPHin  = miLineage::QCAT_GEE(Y.rare, X, 1, X, 1, Tax = NULL,
-                                    min.depth = 0, n.perm = n.perm)
-  ZIGDM.MMUPHin = miLineage::ZIGDM(Y, as.matrix(X, ncol = 1),  NULL, NULL, Tax = NULL, X.index = 1, n.perm =  n.perm)
-  dm.MMUPHin.res = dm1.resample(Y, X, n.perm = n.perm)
-  Y = split.data.frame(Y,X)
-  dm.MMUPHin = HMP::Xmcupo.sevsample(Y)
-  return(c(q1.MMUPHin$pval[1], q2.MMUPHin$pval[1],dm.MMUPHin$`p value`,ZIGDM.MMUPHin$pval[1],
-           q1.MMUPHin$pval[2], q2.MMUPHin$pval[2], dm.MMUPHin.res, ZIGDM.MMUPHin$pval[2]))
-}
-
-rd.test <-function(sim.cnt, mod_gdm_lst, depth.pool, taxa.names, lst.num,
-                   signal.size, signal.method, type, direct = NULL, seed,
-                   simulated = NULL){
-  if (is.null(simulated)) {
-    simulated <- simulate_crc_data(
-      sim.cnt, mod_gdm_lst, depth.pool, taxa.names, lst.num, signal.size,
-      signal.method, type, direct, seed
-    )
-  }
-  dat.simu.poured.tmp <- simulated$OTU
-  X.lst.tmp <- simulated$X
-  Y = do.call(rbind,dat.simu.poured.tmp)
-  X = as.matrix(do.call(c, X.lst.tmp))
-  Y.rare = Rarefy(Y)$otu.tab.rff
-  q1.pour = miLineage::QCAT(Y, X, 1, Tax = NULL,min.depth = 0, n.perm = n.perm)
-  q2.pour  =miLineage::QCAT_GEE(Y.rare, X, 1, X, 1, Tax = NULL,
-                                min.depth = 0, n.perm = n.perm)
-  ZIGDM.pour = miLineage::ZIGDM(Y, as.matrix(X, ncol = 1), NULL, NULL, Tax = NULL, X.index = 1, n.perm = n.perm)
-  dm.pour.res = dm1.resample(Y, X, n.perm = 1000)
-  Y = split.data.frame(Y,X)
-  dm.pour = HMP::Xmcupo.sevsample(Y)
-  return(c(q1.pour$pval[1], q2.pour$pval[1], dm.pour$`p value`, ZIGDM.pour$pval[1],
-           q1.pour$pval[2], q2.pour$pval[2], dm.pour.res, ZIGDM.pour$pval[2]))
-}
-
 run_replicate_tests <- function(sim.cnt, mod_gdm_lst, depth.pool, taxa.names,
-                                lst.num, meta.tab.lst, signal.size,
-                                signal.method, type, direct = NULL, seed,
-                                correlated = FALSE) {
-  test.functions <- list(
-    meta.qcat.test = meta.qcat.test,
-    p.comb.test = p.comb.test,
-    cd.test = cd.test,
-    rd.test = rd.test
-  )
-  test.lengths <- c(meta.qcat.test = 9L, p.comb.test = 8L,
-                    cd.test = 8L, rd.test = 8L)
+                                lst.num, signal.size, signal.method, type,
+                                direct = NULL, seed, correlated = FALSE) {
   simulated <- tryCatch(
     simulate_crc_data(sim.cnt, mod_gdm_lst, depth.pool, taxa.names,
                       lst.num, signal.size, signal.method, type,
@@ -697,35 +443,16 @@ run_replicate_tests <- function(sim.cnt, mod_gdm_lst, depth.pool, taxa.names,
     error = function(e) e
   )
   if (inherits(simulated, "error")) {
-    error <- paste0("Data generation: ", conditionMessage(simulated))
-    return(lapply(test.lengths, function(n) {
-      list(value = rep(NA_real_, n), error = error)
-    }))
+    return(list(value = rep(NA_real_, 9L),
+                error = paste0("Data generation: ", conditionMessage(simulated))))
   }
-
-  # The previous implementation regenerated identical data for each method.
-  # Restore the post-generation RNG state before each test to preserve its
-  # original permutation stream while sharing one generated data set.
-  post.generation.rng <- get(".Random.seed", envir = .GlobalEnv)
-  common.args <- list(
-    sim.cnt = sim.cnt, mod_gdm_lst = mod_gdm_lst, depth.pool = depth.pool,
-    taxa.names = taxa.names, lst.num = lst.num, signal.size = signal.size,
-    signal.method = signal.method, type = type, direct = direct, seed = seed,
-    simulated = simulated
+  safe_test_call(
+    sim.cnt = sim.cnt, test.fun = meta.qcat.test,
+    expected.length = 9L, test.label = "MetaQCAT",
+    mod_gdm_lst = mod_gdm_lst, depth.pool = depth.pool, taxa.names = taxa.names,
+    lst.num = lst.num, signal.size = signal.size, signal.method = signal.method,
+    type = type, direct = direct, seed = seed, simulated = simulated
   )
-  results <- lapply(names(test.functions), function(test.name) {
-    assign(".Random.seed", post.generation.rng, envir = .GlobalEnv)
-    args <- common.args
-    if (test.name == "cd.test") args$meta.tab.lst <- meta.tab.lst
-    do.call(safe_test_call, c(
-      list(test.fun = test.functions[[test.name]],
-           expected.length = test.lengths[[test.name]],
-           test.label = test.name),
-      args
-    ))
-  })
-  names(results) <- names(test.functions)
-  results
 }
 
 test.lst <- list(
@@ -760,55 +487,28 @@ for (scenario.name in names(test.lst)) {
               "; ", if (signal.method == "count") "p" else "Delta",
               ": ", signif(signal.size, 5))
       asy.res <- perm.res <- NULL
-      failure.records <- list()
       file.tag <- paste(
         lineage.name, simulation.target, signal.method, scenario.name,
         format(signal.size, scientific = FALSE), sep = "_"
       )
 
-      test.lengths <- c(meta.qcat.test = 9L, p.comb.test = 8L,
-                        cd.test = 8L, rd.test = 8L)
       output <- parallel::mclapply(
         seq_len(sim.time), run_replicate_tests,
         mod_gdm_lst = mod_gdm_lst, depth.pool = depth.pool,
         taxa.names = taxa.names, lst.num = lst.num,
-        meta.tab.lst = meta.tab.lst, signal.size = signal.size,
+        signal.size = signal.size,
         signal.method = signal.method, type = type, direct = direct,
         seed = seed, mc.cores = nthreads, mc.silent = TRUE
       )
-      unpacked <- lapply(names(test.lengths), function(test.name) {
-        unpack_safe_results(
-          lapply(output, `[[`, test.name),
-          test.lengths[[test.name]], test.name
-        )
-      })
-      names(unpacked) <- names(test.lengths)
-      failure.records <- lapply(unpacked, `[[`, "errors")
-      meta <- unpacked$meta.qcat.test$values
-      pooled <- unpacked$p.comb.test$values
-      corrected <- unpacked$cd.test$values
-      raw <- unpacked$rd.test$values
-      asy.res <- cbind(
-        meta[, 1:3, drop = FALSE], pooled[, 1:4, drop = FALSE],
-        corrected[, 1:4, drop = FALSE], raw[, 1:4, drop = FALSE]
-      )
-      perm.res <- cbind(
-        meta[, 4:9, drop = FALSE], pooled[, 5:8, drop = FALSE],
-        corrected[, 5:8, drop = FALSE], raw[, 5:8, drop = FALSE]
-      )
-
+      unpacked <- unpack_safe_results(output, 9L, "MetaQCAT")
+      asy.res <- unpacked$values[, 1:3, drop = FALSE]
+      perm.res <- unpacked$values[, 4:9, drop = FALSE]
       colnames(asy.res) <- c(
-        "FE-MetaQCAT (asy)", "FE-MetaQCAT* (asy)", "FE-MetaQCAT-O (asy)",
-        "P-QCAT1 (asy)", "P-QCAT2 (asy)", "P-DM (asy)", "P-ZIGDM (asy)",
-        "CD-QCAT1 (asy)", "CD-QCAT2 (asy)", "CD-DM (asy)", "CD-ZIGDM (asy)",
-        "RD-QCAT1 (asy)", "RD-QCAT2 (asy)", "RD-DM (asy)", "RD-ZIGDM (asy)"
+        "FE-MetaQCAT (asy)", "FE-MetaQCAT* (asy)", "FE-MetaQCAT-O (asy)"
       )
       colnames(perm.res) <- c(
         "FE-MetaQCAT (perm)", "FE-MetaQCAT* (perm)", "FE-MetaQCAT-O (perm)",
-        "RE-MetaQCAT", "RE-MetaQCAT*", "RE-MetaQCAT-O",
-        "P-QCAT1 (perm)", "P-QCAT2 (perm)", "P-DM (perm)", "P-ZIGDM (perm)",
-        "CD-QCAT1 (perm)", "CD-QCAT2 (perm)", "CD-DM (perm)", "CD-ZIGDM (perm)",
-        "RD-QCAT1 (perm)", "RD-QCAT2 (perm)", "RD-DM (perm)", "RD-ZIGDM (perm)"
+        "RE-MetaQCAT", "RE-MetaQCAT*", "RE-MetaQCAT-O"
       )
 
       asy.valid <- colSums(!is.na(asy.res))
@@ -829,7 +529,7 @@ for (scenario.name in names(test.lst)) {
       write.csv(perm.res, row.names = FALSE,
                 file = file.path(output.dir, paste0(file.tag, "_perm_MetaQCAT_org2.csv")))
 
-      failure.log <- do.call(rbind, failure.records)
+      failure.log <- unpacked$errors
       if (!is.null(failure.log) && nrow(failure.log) > 0L) {
         failure.log$scenario <- scenario.name
         failure.log$signal.method <- signal.method

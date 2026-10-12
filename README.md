@@ -9,7 +9,6 @@ The repository includes the MetaQCAT source package, fitted simulation models, p
 ```text
 package/
   MetaQCAT_0.0.3.0000.tar.gz
-  miLineage_4.0.tar.gz              # required for simulation comparisons
 simulation/
   code/
     CRC_Pepto_Sim.R
@@ -57,13 +56,13 @@ Run in R from the repository root:
 install.packages(c(
   "brglm2", "CompQuadForm", "data.table", "dplyr", "MASS",
   "parallelly", "psych", "Rcpp", "RcppArmadillo",
-  "doRNG", "doParallel", "foreach", "dirmult", "stringr", "zoo",
-  "geepack", "abind", "vegan", "gplots", "rpart", "rpart.plot",
+  "doParallel", "foreach", "dirmult", "stringr", "zoo",
+  "vegan", "gplots", "rpart", "rpart.plot",
   "ggplot2", "ggh4x", "patchwork", "UpSetR"
 ), repos = "https://cloud.r-project.org")
 ```
 
-Install HMP 2.0 from the [CRAN archive](https://cran.r-project.org/src/contrib/Archive/HMP/):
+HMP is loaded by the real-data analysis scripts; it is not needed for simulation. Install HMP 2.0 from the [CRAN archive](https://cran.r-project.org/src/contrib/Archive/HMP/):
 
 ```r
 install.packages(
@@ -74,33 +73,31 @@ install.packages(
 
 ### Bioconductor dependencies
 
-Install MMUPHin and qvalue through BiocManager. See the [MMUPHin installation page](https://bioconductor.org/packages/release/bioc/html/MMUPHin.html).
+Install qvalue for the real-data analysis scripts through [BiocManager](https://www.bioconductor.org/install/).
 
 ```r
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
   install.packages("BiocManager", repos = "https://cloud.r-project.org")
 }
-BiocManager::install(c("MMUPHin", "qvalue"))
+BiocManager::install("qvalue")
 ```
 
-### Local source packages
+### MetaQCAT source package
 
-Place `miLineage_4.0.tar.gz` in `package/` before running the simulation comparisons, then install both local packages:
+Install the bundled MetaQCAT package:
 
 ```r
 install.packages("package/MetaQCAT_0.0.3.0000.tar.gz",
                  repos = NULL, type = "source")
-install.packages("package/miLineage_4.0.tar.gz",
-                 repos = NULL, type = "source")
 ```
 
-The simulations use **miLineage 4.0**, including its `n.perm` arguments. The [CRAN miLineage 2.1 interface](https://cran.r-project.org/web/packages/miLineage/miLineage.pdf) uses different arguments and is not a direct substitute.
+The simulation scripts require only MetaQCAT and its package dependencies. They do not run comparison methods or require miLineage, MMUPHin, or HMP.
 
 For composition plotting alone, only `ggplot2`, `ggh4x`, and `patchwork` are needed. UpSet plotting requires `UpSetR`, and simulation bar plotting requires `ggplot2`.
 
 ## Simulation studies
 
-The two scripts generate simulations for Peptostreptococcaceae and Enterobacteriaceae across five studies: AUS, CHI, FRA, GER, and USA. Comparisons include fixed-effect and random-effect MetaQCAT, pooled tests (P), batch-corrected tests (CD), and tests on pooled raw data (RD).
+The two scripts generate simulations for Peptostreptococcaceae and Enterobacteriaceae across five studies: AUS, CHI, FRA, GER, and USA. The simulations evaluate only FE-MetaQCAT, FE-MetaQCAT*, FE-MetaQCAT-O, RE-MetaQCAT, RE-MetaQCAT*, and RE-MetaQCAT-O. The data-generation settings and simulation scenarios are retained.
 
 Before running, adjust the settings near the top of each simulation script to suit the available hardware:
 
@@ -108,7 +105,7 @@ Before running, adjust the settings near the top of each simulation script to su
 | --- | --- | --- |
 | `seed` | `2333` | Simulation seed |
 | `nthreads` | `125` | Number of parallel replicate workers; reduce for a local machine |
-| `n.perm` | `300` | Permutation count used by the main simulation comparisons |
+| `n.perm` | `300` | Permutation count used by MetaQCAT |
 | `simulation.target` | `"power"` | Use `"power"` or `"type1"` |
 | `sim.time` | `1000` / `5000` | Replicates for power / Type I error |
 
@@ -121,7 +118,7 @@ Rscript simulation/code/CRC_Pepto_Sim.R
 Rscript simulation/code/CRC_Entero_Sim.R
 ```
 
-Replicate-level p-value CSVs are written to `simulation/outcome/pos_part_res/`. Despite its name, this directory contains both positive-part and zero-part simulation results. Separate failure logs are written when a method fails. Running the same settings again overwrites the matching result files.
+Replicate-level p-value CSVs are written to `simulation/outcome/pos_part_res/`. Despite its name, this directory contains both positive-part and zero-part simulation results. Each asymptotic result CSV contains the three FE-MetaQCAT columns; each permutation result CSV contains the three FE and three RE columns. Separate failure logs are written when a MetaQCAT replicate fails. Running the same settings again overwrites the matching result files.
 
 ### Simulation bar plots
 
@@ -139,7 +136,7 @@ power_count_perm_bar_plot.pdf
 type1_proportion_perm_bar_plot.pdf
 ```
 
-Only figures with corresponding input results are generated. The default is permutation results (`inference <- "perm"`) with rejection cutoff `alpha <- 0.05`; change `inference` to `"asy"` for asymptotic results. Rates are calculated over valid replicates, excluding missing p-values. The plotting script writes no PNGs or summary CSVs.
+Only figures with corresponding input results are generated. The default is permutation results (`inference <- "perm"`) with rejection cutoff `alpha <- 0.05`; change `inference` to `"asy"` for asymptotic results. The bars show the three MetaQCAT variants grouped under FE and RE (FE only for asymptotic results). Older CSVs containing comparison methods can also be read: only MetaQCAT columns are selected. Rates are calculated over valid replicates, excluding missing p-values. The plotting script writes no PNGs or summary CSVs.
 
 ## Real-data analyses
 

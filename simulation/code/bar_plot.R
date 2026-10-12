@@ -1,4 +1,4 @@
-# Summarize replicate p-value CSVs produced by CRC_*_Sim.R.
+# Plot MetaQCAT replicate p-values produced by CRC_*_Sim.R.
 # Run from the project root: Rscript simulation/code/bar_plot.R
 # Settings below select permutation or asymptotic results and the rejection cutoff.
 # No simulation is run by this file. Only PDFs are saved to plot/simulation/.
@@ -29,16 +29,12 @@ plot.dir <- file.path(project.root, "plot", "simulation")
 inference <- "perm" # "perm" or "asy"
 alpha <- 0.05
 
-# Preserve the P/CD/RD/FE/RE spacing and method colors of the earlier bar plots.
+# Three MetaQCAT components in each FE/RE group.
 method.positions <- c(
-  "P-DM" = 1, "P-ZIGDM" = 2, "P-QCAT1" = 3, "P-QCAT2" = 4,
-  "CD-DM" = 6, "CD-ZIGDM" = 7, "CD-QCAT1" = 8, "CD-QCAT2" = 9,
-  "RD-DM" = 11, "RD-ZIGDM" = 12, "RD-QCAT1" = 13, "RD-QCAT2" = 14,
-  "FE-MetaQCAT" = 16, "FE-MetaQCAT*" = 17, "FE-MetaQCAT-O" = 18,
-  "RE-MetaQCAT" = 20, "RE-MetaQCAT*" = 21, "RE-MetaQCAT-O" = 22
+  "FE-MetaQCAT" = 1, "FE-MetaQCAT*" = 2, "FE-MetaQCAT-O" = 3,
+  "RE-MetaQCAT" = 5, "RE-MetaQCAT*" = 6, "RE-MetaQCAT-O" = 7
 )
 method.colors <- c(
-  DM = "#3B5BA9", ZIGDM = "#56B4E9", QCAT1 = "#009E8E", QCAT2 = "#8B6BB1",
   MetaQCAT = "#E69F00", `MetaQCAT*` = "#D55E00", `MetaQCAT-O` = "#CC6677"
 )
 scenario.labels <- c(homogeneous = "Homogeneous",
@@ -60,6 +56,10 @@ summarize_simulation_results <- function(input.dir, inference = "perm", alpha = 
     info <- regmatches(basename(file), regexec(pattern, basename(file)))[[1L]]
     values <- utils::read.csv(file, check.names = FALSE)
     methods <- sub(" \\((perm|asy)\\)$", "", names(values))
+    # Also read older comparison CSVs, selecting only the MetaQCAT columns.
+    keep <- grepl("^(FE|RE)-MetaQCAT(\\*|-O)?$", methods)
+    values <- values[, keep, drop = FALSE]
+    methods <- methods[keep]
     expected <- names(method.positions)
     if (inference == "asy") expected <- expected[!startsWith(expected, "RE-")]
     if (!nrow(values) || anyDuplicated(methods) || !setequal(methods, expected)) {
@@ -94,7 +94,7 @@ make_simulation_bar_plot <- function(d) {
   stopifnot(length(unique(d$target)) == 1L, length(unique(d$signal)) == 1L,
             length(unique(d$inference)) == 1L)
   d$x <- unname(method.positions[d$method])
-  d$family <- factor(sub("^(P|CD|RD|FE|RE)-", "", d$method),
+  d$family <- factor(sub("^(FE|RE)-", "", d$method),
                      levels = names(method.colors))
   d$scenario <- factor(d$scenario, levels = names(scenario.labels),
                         labels = unname(scenario.labels))
@@ -115,8 +115,8 @@ make_simulation_bar_plot <- function(d) {
     ggplot2::geom_col(width = 0.78, colour = "black", linewidth = 0.3, na.rm = TRUE) +
     ggplot2::facet_grid(rows = ggplot2::vars(scenario), cols = ggplot2::vars(panel)) +
     ggplot2::scale_x_continuous(
-      breaks = if (d$inference[1L] == "perm") c(2.5, 7.5, 12.5, 17, 21) else c(2.5, 7.5, 12.5, 17),
-      labels = if (d$inference[1L] == "perm") c("P", "CD", "RD", "FE", "RE") else c("P", "CD", "RD", "FE"),
+      breaks = if (d$inference[1L] == "perm") c(2, 6) else 2,
+      labels = if (d$inference[1L] == "perm") c("FE", "RE") else "FE",
       expand = ggplot2::expansion(add = 0.8)
     ) +
     y.scale +
