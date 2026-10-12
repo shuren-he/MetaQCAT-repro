@@ -7,3 +7,6 @@
 .RDataTmp
 .Ruserdata
 .Rproj.user/
+
+# Generated real-data figures
+/plot/real/
