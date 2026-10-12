@@ -98,18 +98,19 @@ counts <- .Remove.col(otu.tab.lst, remove.index.lst)
 tax = tax[6:7] # Extract the Tax information needed
 tax <- tax[!duplicated(tax$genus),]
 colnames(tax) <- paste("Rank",c(1:ncol(tax)),sep="")
+rownames(tax) <- tax$Rank2
 
 ## Construct the design matrix (Case group:1; Control Group: 0). Can add more covariates of interest like age, gender, etc...
 disease <- rep(1,nrow(count.genus))
 disease[meta$Group == 'CTR'] <- 0
-disease <- split(disease,meta$Country)
+disease <- split(disease, meta$Country)
 
 FE_Time = Sys.time()
-CRC_FE <- MetaQCAT(counts, disease, 1, Tax = tax, n.perm = 1000, meta.method = "FE-MetaQCAT-O", n.threads = 10)
+CRC_FE <- MetaQCAT(counts, disease, 1, Tax = tax, n.perm = 1000, meta.method = "FE-MetaQCAT-O", n.threads = 8)
 FE_Time = difftime(Sys.time(), FE_Time, units = "secs")
 
 RE_Time = Sys.time()
-CRC_RE <- MetaQCAT(counts, disease, 1, Tax = tax, n.perm = 1000, meta.method = "RE-MetaQCAT-O", n.threads = 10)
+CRC_RE <- MetaQCAT(counts, disease, 1, Tax = tax, n.perm = 1000, meta.method = "RE-MetaQCAT-O", n.threads = 8)
 RE_Time = difftime(Sys.time(), RE_Time, units = "secs")
 
 
