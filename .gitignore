@@ -1,0 +1,9 @@
+# macOS metadata
+.DS_Store
+
+# R session files; named .RData/.rda datasets remain tracked
+.Rhistory
+.RData
+.RDataTmp
+.Ruserdata
+.Rproj.user/
