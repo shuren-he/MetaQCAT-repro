@@ -20,7 +20,7 @@
 | `code/IBD/QCAT_C.R` | QCAT-C comparator used by the IBD entrypoint |
 | `R/project_paths.R` | Repository paths and local dependency library |
 | `install.R` | Dependency and source-package installation; no analyses |
-| `scripts/check_release.R` | Static syntax, exclusion and checksum checks |
+| `scripts/check_release.R` | Static syntax and file-exclusion checks |
 
 Only paper workflows and the latest project package are included. External
 inputs and generated results are described in `docs/INPUTS.md` and are not

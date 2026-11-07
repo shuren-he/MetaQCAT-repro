@@ -104,8 +104,8 @@ command-line arguments.
 Rscript scripts/check_release.R
 ```
 
-This parses R files, checks file exclusions and verifies `SHA256SUMS` without
-fitting models. Source checks and preprocessing checks do not replace full
+This parses R files and checks file exclusions without fitting models.
+Source checks and preprocessing checks do not replace full
 analysis reruns. This organization step does not launch those reruns or upload
 anything to GitHub.
 
