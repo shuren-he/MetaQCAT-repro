@@ -1,12 +1,27 @@
-# macOS metadata
-.DS_Store
+# External analysis inputs and generated outputs (not package example data).
+/data/
+/res/
+/outcome/
+/simu_res/
+/type1_error/
+/tables/
+/plots/
+/tmp/
+/.library/
+/output/
+/outputs/
+*.Rcheck/
+*.tar.gz
 
-# R session files; named .RData/.rda datasets remain tracked
+# Session, editor, and native build artifacts.
+.DS_Store
 .Rhistory
 .RData
-.RDataTmp
-.Ruserdata
 .Rproj.user/
+*.o
+*.so
+*.dll
+*.dylib
+*.a
+Rplots.pdf
 
-# Generated real-data figures
-/plot/real/

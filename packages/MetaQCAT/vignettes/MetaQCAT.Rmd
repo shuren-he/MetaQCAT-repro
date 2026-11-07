@@ -1,0 +1,201 @@
+---
+title: "MetaQCAT: wild-score bootstrap for microbiome meta-analysis"
+author: "Shuren He"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 2
+    css: metaqcat.css
+vignette: >
+  %\VignetteIndexEntry{MetaQCAT: wild-score bootstrap for microbiome meta-analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", message = FALSE,
+                      warning = FALSE, error = FALSE, cache = FALSE)
+options(width = 88)
+library(MetaQCAT)
+data("CRC_data", package = "MetaQCAT")
+data("IBD_data", package = "MetaQCAT")
+```
+
+# Scope and interface
+
+MetaQCAT combines covariate-adjusted score summaries across independent studies.
+The count component tests the composition of child taxa **conditional on the
+total count within the specified lineage**, not total family abundance in the
+microbiome. The zero component tests observed-zero indicators, not verified
+biological absence. The public calibration in version 0.2.1 is a null-imposed
+wild-score bootstrap; labels and covariates are not permuted.
+
+| Method | Component | Returned calibration |
+|:--|:--|:--|
+| `FE-MetaQCAT` | Count composition | `Asy`, `Boot` |
+| `FE-MetaQCAT*` | Observed-zero pattern | `Asy`, `Boot` |
+| `FE-MetaQCAT-O` | Cauchy combination of count and zero p-values | `Asy`, `Boot` |
+| `RE-MetaQCAT` | Count composition with a heterogeneity score | `Boot` |
+| `RE-MetaQCAT*` | Zero pattern with a heterogeneity score | `Boot` |
+| `RE-MetaQCAT-O` | Cauchy combination of the RE component p-values | `Boot` |
+
+`X` contains the exposure and adjustment variables without an intercept.
+`X.index` identifies the column(s) to test; all other columns remain nuisance
+covariates. Adjustment sets can differ across studies, but tested coefficient
+meanings and ordering must agree. For within-subject or between-subject effects,
+construct the appropriate columns explicitly: the package does not decompose
+exposures automatically. This is why there is no within/between permutation
+option. `n.boot = 999L` replaces the old `n.perm` interface.
+
+# Null-imposed score bootstrap
+
+For each lineage, component and study, the covariate-adjusted null is fitted
+once. Write $s_{\beta,\ell i}$ and $s_{\gamma,\ell i}$ for the tested and nuisance
+scores summed over visits of independent subject $i$. With total sensitivity
+blocks evaluated under the null,
+
+\[
+u_{\ell i}=s_{\beta,\ell i}-H_{\beta\gamma,\ell}
+ H_{\gamma\gamma,\ell}^{-1}s_{\gamma,\ell i},\qquad
+J_\ell=H_{\beta\beta,\ell}-H_{\beta\gamma,\ell}
+ H_{\gamma\gamma,\ell}^{-1}H_{\gamma\beta,\ell}.
+\]
+
+The rows of $\Psi_\ell$ are $\psi_{\ell i}^{T}$, where
+$\psi_{\ell i}=J_\ell^{-1}u_{\ell i}$. They are **not centered**.
+The one-step score summary and unscaled sandwich covariance are
+$\widehat\beta_\ell=\sum_i\psi_{\ell i}$ and
+$V_\ell=\Psi_\ell^T\Psi_\ell$. These are null-based score summaries;
+they are not full-model coefficient fits under arbitrary alternatives.
+
+Each bootstrap draw independently assigns a Rademacher multiplier
+$\xi_{\ell i}\in\{-1,+1\}$ to each subject, and forms
+$\widehat\beta_\ell^*=\Psi_\ell^T\xi_\ell$. The observed summary is **not** added.
+Sensitivity matrices, covariances, kernels, retained taxa, references and any
+completed rarefaction remain fixed. Conditional on the data, bootstrap mean is
+zero and covariance is $V_\ell$. No nuisance fit is repeated inside a draw.
+Reduced models use ordinary maximum-likelihood nuisance estimates; convergence
+and nuisance-score residuals are checked rather than silently replacing the
+ordinary score equations with a bias-reduced fit.
+
+Multipliers are keyed by study and subject and reused across count, zero,
+FE, RE and lineage calculations. Excluding a subject from one component does
+not shift another subject's weights. Independent samples are subjects of size
+one. Named studies and stable sample/subject identifiers are needed for
+reordering-invariant reproducibility; positional identifiers cannot establish
+identity after an arbitrary row permutation.
+
+Count RE uses $B_\ell=(I_{K_\ell}+\mathbf1\mathbf1^T)\otimes I_q$ in taxon-major
+ALR coordinates and adds $\{\max(0,U)\}^2/I_\sigma$ to FE after summing the variance
+score across studies. The zero RE component retains its own identity kernel
+and uses the same positive-part boundary convention after summing its variance
+score across studies.
+Observed and bootstrap statistics use the same evaluator and cached matrices.
+The count reference-invariance property requires the same eligible taxa/studies,
+harmonized coordinates and nonsingular information/covariances. Unsupported
+rank or conditioning returns a documented failure, not a silent ridge or
+pseudoinverse.
+
+The marginal p-value is
+\[
+p=\frac{1+\sum_{r=1}^{R}1\{Q_r^*\ge Q_{\rm obs}\}}{R+1},\qquad R=\texttt{n.boot}.
+\]
+All requested draws run; ties count as exceedances. Nonfinite draws are errors,
+not deleted observations. The `-O` tests apply the existing equal-weight Cauchy
+rule to the **marginal** bootstrap p-values, with documented endpoint handling.
+The plus-one marginal bootstrap p-values are positive; a component p-value of
+one gives a combined value of one. For asymptotic p-values, zero gives zero
+unless a zero and one occur together; that mixed boundary pair is clipped at
+$10^{-15}$ and $1-10^{-15}$ before combination. Other values use a numerically
+stable Cauchy-tail calculation.
+They are not a separately joint-bootstrap-calibrated omnibus. Validate both
+omnibus tests separately before claiming calibration. BH adjustment is applied
+to the prespecified eligible family; failed analyses are retained as `NA` and
+their frequency must be reported.
+
+This construction adapts [Kline and Santos (2012)](https://doi.org/10.1515/2156-6674.1006)
+and nuisance-adjusted sign-flipping principles of
+[Hemerik, Goeman and Finos (2020)](https://doi.org/10.1111/rssb.12369).
+It is asymptotic, not finite-sample exact. Valid null estimating equations,
+regular nuisance estimation, independent clusters, finite moments, no dominant
+cluster and stable full-rank matrices are required. It does not fix unmeasured
+confounding, arbitrary mean-model misspecification or participants shared across
+nominally independent studies. Those references do not establish a published
+proof of this complete RE/Cauchy workflow.
+
+# Independent-sample example
+
+This small synthetic example executes during vignette checks. Nineteen draws
+are for software demonstration only, not discovery analysis.
+
+```{r independent-example}
+set.seed(31)
+counts <- X <- vector("list", 2L)
+names(counts) <- names(X) <- c("Study_A", "Study_B")
+for (s in seq_along(counts)) {
+  counts[[s]] <- t(rmultinom(80L, 80L, c(.4, .35, .25)))
+  dimnames(counts[[s]]) <- list(paste0("sample_", 1:80), paste0("taxon_", 1:3))
+  X[[s]] <- cbind(disease = rep(0:1, 40L), age = rnorm(80L))
+  rownames(X[[s]]) <- rownames(counts[[s]])
+}
+fit <- MetaQCAT(counts, X, X.index = 1L, method = "FE-MetaQCAT",
+                min.prev = 0, n.boot = 19L, seed = 42L)
+fit$pvalue.comp
+fit$bootstrap
+```
+
+For the packaged CRC data, `CRC_data$disease` is the original unadjusted design.
+To adjust for other covariates, explicitly construct and verify a complete
+`X` list; metadata fields alone do not imply adjustment.
+
+```{r crc-template, eval=FALSE}
+tax <- CRC_data$taxonomy[, c("Rank5", "Rank6"), drop = FALSE]
+colnames(tax) <- c("Rank1", "Rank2")
+crc_fit <- MetaQCAT(CRC_data$counts, CRC_data$disease, X.index = 1L,
+  taxonomy = tax, method = "FE-MetaQCAT-O", n.boot = 9999L, seed = 2026L)
+saveRDS(crc_fit, "CRC_FE_omnibus.rds")
+```
+
+# Repeated-sample IBD example
+
+The packaged IBD data use nonoverlapping analysis strata and explicit subject
+IDs. The first design column is disease; other columns are adjustment variables.
+Check source cohort overlap for any replacement data before analysis.
+
+```{r ibd-template, eval=FALSE}
+tax <- IBD_data$taxonomy[, c("Rank5", "Rank6"), drop = FALSE]
+colnames(tax) <- c("Rank1", "Rank2")
+ibd_fit <- MetaQCAT(IBD_data$counts, IBD_data$design, X.index = 1L,
+  cluster.id = IBD_data$subject_ids, taxonomy = tax,
+  method = "RE-MetaQCAT-O", n.boot = 9999L, min.prev = c(.1, .1),
+  seed = 2026L, n.threads = 4L)
+saveRDS(ibd_fit, "IBD_RE_omnibus.rds")
+```
+
+# Reporting and validation
+
+Save the entire results object and the source configuration. Report seed,
+package and dependency versions, preprocessing, independent-cluster counts,
+requested/completed draws, eligibility and failure reasons. A taxonomy scan
+returns `lineage.pval`, `lineage.qval`, `lineage.coef`, `sig.lineage` and
+`failed.lineage`; its bootstrap rows begin `Bootstrap-`. Failed lineages retain
+their names and `NA` columns. `save.coef` retains score summaries when requested.
+Bootstrap metadata records calibration, multiplier/covariance conventions,
+the RNG triplet, stable subject IDs, requested/completed repetitions and
+per-lineage completion counts.
+The p-value floor is $1/(R+1)$; assess it against the intended BH thresholds.
+Use matched, prespecified budgets for full and cohort-omission fits.
+
+Opt-in scripts under `inst/validation` cover independent/repeated samples,
+covariate-balanced/associated disease, sample-size convergence, representative
+power and full-pipeline stress settings. They record all six tests, p-values,
+rejection rates at 0.05/0.01, binomial Monte Carlo intervals, attempted and failed
+fits, timing, configuration and session information. They do not run during
+`R CMD check`. Small smoke runs check execution only: large calibration,
+application reruns and global/mixed-null omnibus-plus-BH simulations remain
+necessary before corresponding accuracy or FDR claims. No planned experiment
+should be reported as completed.
+
+```{r session-info}
+sessionInfo()
+```

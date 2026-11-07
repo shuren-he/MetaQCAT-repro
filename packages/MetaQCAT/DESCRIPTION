@@ -1,0 +1,38 @@
+Package: MetaQCAT
+Title: Meta-Analysis of Microbiome Composition Associations
+Version: 0.2.1
+Authors@R: person("Shuren", "He", , email = "heshuren987@gmail.com", role = c("aut", "cre"))
+Description: Fixed- and random-effect meta-analysis of microbiome composition
+    and observed-zero associations using covariate-adjusted study-level score
+    summaries and a null-imposed wild-score bootstrap. Independent subjects
+    are the multiplier units, including for repeated observations. Null fits,
+    covariance estimates and eligibility decisions remain fixed across draws.
+    The random-effect composition test uses a contrast-space-induced kernel
+    to obtain reference-taxon-invariant inference for eligible taxa when
+    the required covariance matrices are positive definite. Methods build
+    on Kline and Santos (2012) <doi:10.1515/2156-6674.1006>,
+    Hemerik et al. (2020) <doi:10.1111/rssb.12369>, Tang et al. (2017)
+    <doi:10.1093/bioinformatics/btw804> and Lee et al. (2013)
+    <doi:10.1016/j.ajhg.2013.05.010>.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Imports: 
+    brglm2,
+    parallel,
+    parallelly,
+    Rcpp,
+    stats
+LinkingTo: 
+    Rcpp,
+    RcppArmadillo
+Suggests: 
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Depends: 
+    R (>= 3.6.0)
+LazyData: true
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.0

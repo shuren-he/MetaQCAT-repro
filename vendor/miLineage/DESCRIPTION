@@ -1,0 +1,13 @@
+Package: miLineage
+Type: Package
+Title: Association Tests for Microbial Lineages on a Taxonomic Tree
+Version: 4.0
+Date: 2024-05-09
+Author: Zheng-Zheng Tang
+Maintainer: Zheng-Zheng Tang <tang@biostat.wisc.edu>
+Description: A variety of association tests for microbiome data analysis including the Quasi-Conditional Association Tests (QCAT) described in Tang Z.-Z. et al.(2017) <doi:10.1093/bioinformatics/btw804>, QCAT-C for clustered microbiome data analysis described in Tang Z.-Z. & Chen G. (2019, Statistics in Biosciences), the Zero-Inflated Generalized Dirichlet Multinomial (ZIGDM) tests described in Tang Z.-Z. & Chen G. (2019) <Biostatistics, kxy025>, and the Adaptively Zero-Inflated Generalized Dirichlet Multinomial (AIGDM) tests for clustered microbiome data described in Hong Q. & Tang Z.-Z. (2024) <Submitted>.
+License: GPL (>=2)
+Depends: R (>= 3.1.1), MASS, data.table, geepack, abind, CompQuadForm
+RoxygenNote: 7.1.1
+NeedsCompilation: no
+Packaged: 2024-07-25 06:59:47 UTC; 20172

@@ -1,0 +1,156 @@
+CHANGES IN HMP VERSION 2.0
+
+CHANGES
+
+* Added parallel computing to rpart cross validation
+
+* The best rpart tree can now be the tree with the smallest error or plus/minus 1 standard error
+
+* Changed rpart to run quicker by handling factors and numeric differently
+
+* Data.filter now works with numtaxa and perTaxa as NULL by keeping all taxa
+
+* Removed deprecated arguments
+
+* Added vignette containing code to reproduce figures in the DM-Rpart paper
+
+BUG FIXES
+
+* Fixed labeling error in rpart
+
+* Added error checking for rpart trees with 1 node and no surrogates
+
+
+CHANGES IN HMP VERSION 1.6
+
+CHANGES
+
+* Added penalty for GA
+
+* Changed rpart to use cross validation to find the best tree instead of permutations
+
+* Changed KL to use MOM instead of MLE
+
+BUG FIXES
+
+* Fixed getBC so that it drops duplicates instead of crashing
+
+* Fixed estPi to handle groups with 1 sample
+
+
+CHANGES IN HMP VERSION 1.5.1
+
+CHANGES
+
+* Added ability to use custom covar distance matrix
+
+* Added two new plotting functions
+
+* Added text to indicate logging with the pi plot function
+
+BUG FIXES
+
+* Fixed labels in GA plots and results
+
+* Fixed bug in Xmcupo.sevsample pvalue calculations
+
+* Fixed bug with plot.pi not passing plot title
+
+
+CHANGES IN HMP VERSION 1.5
+
+CHANGES
+
+* Tidied up every function's code, comments, and variable names
+
+* Several function parameter names were changed.  The old names remain to support backwards compatibility.
+
+* kullbackLieber was renamed to Kullback.Leibler.  kullbackLieber now just calls Kullback.Leibler.
+
+* Added Plot.MDS to plot data
+
+* Added Est.PI to estimate the pi vector and plot it with Plot.Pi 
+
+* Changed data.filter to allow for percentage based filtering
+
+* Added a function for testing paired data (Test.Paired)
+
+* Added a function that uses rpart to find groups within the data (DM.Rpart and DM.Rpart.Perm)
+
+* Added a function that use GA to find taxa that separate 2 groups (DM.GA and DM.GA.Consensus)
+
+BUG FIXES
+
+* DM.MoM can now take a single subject
+
+* Added 1 to the numerator and denominators for permutation tests to prevent pvalues = 0
+
+
+
+CHANGES IN HMP VERSION 1.4.3
+
+BUG FIXES
+
+* Fixed a bug in the DM.MoM function
+
+
+
+CHANGES IN HMP VERSION 1.4
+
+CHANGES
+
+* Changed several functions to improve performance
+
+* MC.Xdc.statistic and MC.Xoc.statistics now calculates n.groups themselves
+
+* Xmcupo.sevsample now calculates K itself
+
+* Added a function to format and combine multiple data sets with different taxa
+
+* Added a Kullback Leiber function
+
+
+
+CHANGES IN HMP VERSION 1.3.1
+
+CHANGES
+
+* Changed the MC example files to use "DM.MoM" instead of "dirmult" for speed
+
+
+BUG FIXES
+
+* Fixed a bug in MC.Xmcupo.statistics that produced a incorrect result under type="ha"
+
+
+
+CHANGES IN HMP VERSION 1.3
+
+CHANGES
+
+* Updated several of the MC functions to perform power calculations on unbalanced designs, 
+  however it should be noted that this caused the Nrs parameter to change from a vector to a 
+  list for several functions.
+  
+* Removed the initscalar parameter from the sevsample functions and replaced it with the value
+  of gamma from the DM.MoM function.
+
+* Change the names of some functions so they all follow the same formatting.  This change mainly 
+  affected internal functions.
+  
+* Changed the wording of the return value in the MC functions from "effect size" to "size of the 
+  test statistics" to correctly describe what is being returned.
+  
+* Changed the Barchart.data function to take a full title rather than just a taxa level.
+
+* Changed Xdc.sevsample to select between 'mle' and 'mom' estimators.
+
+* Added several warnings/notes clarifying that the value of MC should be >1000 in the MC.functions
+
+* Added several warnings/notes clarifying the use of different number of reads in a sample
+
+* Added two new functions: Xmcupo.effectsize and pioest
+
+BUG FIXES
+
+* Fixed a bug in MC.Xdc.statistics where k was not set to the right value under "ha".
