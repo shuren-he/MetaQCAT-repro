@@ -4,7 +4,7 @@
 source(file.path("R", "project_paths.R"), local = TRUE)
 
 ## 1. Paper settings ----------------------------------------------------------
-min.depth <- 2999L             # remove raw sample depth less than 3000
+min.depth <- 3000L             # remove raw sample depth less than 3000
 max.zero.fraction <- 0.90
 min.prev <- 0.10               # MetaQCAT component-specific prevalence filter
 n.boot <- 1000L
@@ -81,9 +81,9 @@ drop <- m$dataset_name == "HMP2" & is.na(m$age.numeric)
 exclusions[[length(exclusions) + 1L]] <- record.exclusion(
   m[drop, , drop = FALSE], "HMP2_age_missing")
 m <- m[!drop, , drop = FALSE]
-drop <- depth[rownames(m)] <= min.depth
+drop <- depth[rownames(m)] < min.depth
 exclusions[[length(exclusions) + 1L]] <- record.exclusion(
-  m[drop, , drop = FALSE], "raw_depth_at_or_below_3000")
+  m[drop, , drop = FALSE], "raw_depth_below_3000")
 m <- m[!drop, , drop = FALSE]
 
 # Analyze specimen types separately and split HMP2 at age 18.
