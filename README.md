@@ -46,7 +46,7 @@ Rscript scripts/real_data/ibd/IBD_all_methods.R
 | Analysis | Shared preprocessing | Methods |
 | --- | --- | --- |
 | CRC | Sample depth >=1,000; within-study zero fraction <=0.90; disease-only design | Six MetaQCAT tests; P/CD/RD strategies for QCAT1, QCAT2, DM and ZIGDM |
-| IBD | Sample depth >3,000; ten nonoverlapping subject strata; selected-covariate complete cases; zero fraction <=0.90 | Six MetaQCAT tests; P/CD/RD strategies for QCAT.Cluster and QCAT_GEE.Cluster |
+| IBD | Sample depth >=3,000; ten nonoverlapping subject strata; selected-covariate complete cases; zero fraction <=0.90 | Six MetaQCAT tests; P/CD/RD strategies for QCAT.Cluster and QCAT_GEE.Cluster |
 
 Both MetaQCAT analyses use `min.prev = 0.1`, 1,000 bootstrap draws and seed
 1234. CRC comparators use a 1,000-permutation budget. IBD comparators use
