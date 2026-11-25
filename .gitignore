@@ -1,4 +1,5 @@
-# External analysis inputs and generated outputs (not package example data).
+# Runtime input copies and generated outputs.
+# Frozen release inputs under real/*/data and simulation/data stay tracked.
 /data/
 /res/
 /outcome/

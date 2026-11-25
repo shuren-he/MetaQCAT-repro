@@ -1,5 +1,7 @@
 # Enterobacteriaceae: independent and correlated type I error.
-# Run from the repository root. All 18 methods share each generated dataset.
+# Run from the repository root; all methods share each generated dataset.
+# Independent: 18 methods. Correlated: six MetaQCAT + six native cluster QCAT.
+# To run only correlated nulls, set SIM_TYPE1_DESIGNS=correlated.
 lineage.name <- "Enterobacteriaceae"
 simulation.target <- "type1"
 composition.genera <- c(

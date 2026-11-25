@@ -1,5 +1,5 @@
-# Shared, directly executable workflow used by the four short family entrypoints.
-# Run from the repository root. No input or result files are distributed here.
+# Shared, directly executable workflow used by the six short family entrypoints.
+# Run from the repository root. Each method shares one generated dataset.
 source("R/project_paths.R", local = TRUE)
 package.dir <- file.path(project.dir, "packages", "MetaQCAT")
 required <- c("pkgload", "parallelly", "HMP", "miLineage", "MMUPHin")
@@ -12,10 +12,10 @@ if (as.character(utils::packageVersion("MetaQCAT")) != "0.2.1" ||
 
 seed <- 2333L
 sim.time <- as.integer(Sys.getenv("SIM_REPS",
-  if (simulation.target == "power") "1000" else "5000"))
+  if (simulation.target %in% c("power", "power_cluster")) "1000" else "5000"))
 n.boot <- as.integer(Sys.getenv("SIM_BOOTS", "300"))
 n.perm <- as.integer(Sys.getenv("SIM_PERMS", "300"))
-n.perm.rd.dm <- as.integer(Sys.getenv("SIM_RD_DM_PERMS", "1000"))
+n.perm.rd.dm <- as.integer(Sys.getenv("SIM_RD_DM_PERMS", "300"))
 nthreads <- as.integer(Sys.getenv("SIM_THREADS", "7"))
 stopifnot(!anyNA(c(sim.time, n.boot, n.perm, n.perm.rd.dm, nthreads)),
           min(sim.time, n.boot, n.perm, n.perm.rd.dm, nthreads) > 0L)
@@ -27,12 +27,16 @@ meta.methods <- c("FE-MetaQCAT", "FE-MetaQCAT*", "FE-MetaQCAT-O",
                   "RE-MetaQCAT", "RE-MetaQCAT*", "RE-MetaQCAT-O")
 baseline.methods <- unlist(lapply(c("P", "CD", "RD"), function(strategy)
   paste0(strategy, "-", c("QCAT1", "QCAT2", "DM", "ZIGDM"), " (perm)")))
+cluster.baseline.methods <- unlist(lapply(c("P", "CD", "RD"), function(strategy)
+  paste0(strategy, "-", c("QCAT.Cluster", "QCAT_GEE.Cluster"), " (perm)")))
 methods <- c(meta.methods, baseline.methods)
 
-input.files <- file.path(project.dir, "data", "simu", c(
+input.dir <- file.path(project.dir, "data", "simu")
+if (!dir.exists(input.dir)) input.dir <- file.path(project.dir, "simulation", "data")
+input.files <- file.path(input.dir, c(
   paste0("mod_gdm_lst_", lineage.name, ".RData"), "meta.rda", "count.genus.rda"))
 if (any(!file.exists(input.files)))
-  stop("Restore the external simulation inputs listed in docs/SIMULATION_WORKFLOWS.md.")
+  stop("Run scripts/inputs/prepare_inputs.R; see docs/INPUTS.md for the bundled inputs.")
 for (file in input.files) load(file)
 study.names <- c("AUS", "CHI", "FRA", "GER", "USA")
 lst.num <- as.integer(table(factor(meta$Country, levels = study.names)))
@@ -50,17 +54,39 @@ stopifnot(all(lengths(depth.pool) == lst.num))
 
 source(file.path(project.dir, "scripts", "simulation", "simulation_helpers.R"),
        local = TRUE)
-if (simulation.target == "power") {
+if (simulation.target %in% c("power", "power_cluster")) {
   settings <- expand.grid(scenario = c("homogeneous", "one.flipped.study"),
     signal.method = c("proportion", "count"), stringsAsFactors = FALSE)
   settings$signal.size <- ifelse(settings$signal.method == "proportion",
                                  delta.proportion, count.probability)
-  settings$correlated <- FALSE
+  settings$correlated <- identical(simulation.target, "power_cluster")
 } else {
   settings <- data.frame(scenario = c("independent", "correlated"),
     signal.method = "none", signal.size = 0,
     correlated = c(FALSE, TRUE), stringsAsFactors = FALSE)
 }
+if (simulation.target == "type1") {
+  requested.designs <- Sys.getenv("SIM_TYPE1_DESIGNS", "")
+  if (nzchar(requested.designs)) {
+    requested.designs <- trimws(strsplit(requested.designs, ",", fixed = TRUE)[[1L]])
+    if (any(!requested.designs %in% c("independent", "correlated")))
+      stop("SIM_TYPE1_DESIGNS must contain independent and/or correlated.")
+    settings <- settings[settings$scenario %in% requested.designs, , drop = FALSE]
+    if (!nrow(settings)) stop("No null design selected.")
+  }
+}
+methods.by.setting <- lapply(seq_len(nrow(settings)), function(i)
+  c(meta.methods, if (settings$correlated[i])
+    cluster.baseline.methods else baseline.methods))
+names(methods.by.setting) <- paste(settings$scenario, settings$signal.method, sep = "_")
+methods <- methods.by.setting[[1L]]
+# Keep correlated-power files separate from independent power and null results.
+target.tag <- if (simulation.target == "power_cluster")
+  "correlated_power" else simulation.target
+pvalue.suffix <- if (simulation.target == "power_cluster")
+  "_resampling_pvalues.csv" else "_pvalues.csv"
+summary.suffix <- if (simulation.target == "power_cluster")
+  "_resampling_summary.csv" else "_summary.csv"
 output.dir <- Sys.getenv("SIM_OUTPUT", file.path(
   project.dir, "outcome", "simulation", simulation.target, lineage.name))
 
@@ -77,8 +103,17 @@ if (!isTRUE(getOption("crc.simulation.source.only", FALSE))) {
     file.path(package.dir, "DESCRIPTION"))
   configuration <- list(
     lineage = lineage.name, target = simulation.target, settings = settings,
-    methods = methods, seed = seed, replicates = sim.time, n.boot = n.boot,
-    n.perm = n.perm, n.perm.rd.dm = n.perm.rd.dm, threads = nthreads,
+    methods = unique(unlist(methods.by.setting, use.names = FALSE)),
+    methods.by.setting = methods.by.setting,
+    correlated.comparator = if (any(settings$correlated))
+      "native BTW cluster QCAT; MMUPHin-only CD" else NULL,
+    native.cluster.permutation.note = if (any(settings$correlated)) paste(
+      "Actual adaptive draw counts are not exposed by miLineage.",
+      "P exchanges clusters within study; CD/RD across all pooled clusters.") else NULL,
+    seed = seed, replicates = sim.time, n.boot = n.boot,
+    n.perm = n.perm,
+    n.perm.rd.dm = if (any(!settings$correlated)) n.perm.rd.dm else NULL,
+    threads = nthreads,
     min.prev = min.prev, alpha = alpha, planned.sample.sizes = lst.num,
     composition.genera = composition.genera, study.names = study.names,
     mod_gdm_lst = mod_gdm_lst, depth.pool = depth.pool,
@@ -96,12 +131,14 @@ if (!isTRUE(getOption("crc.simulation.source.only", FALSE))) {
     signal.method <- settings$signal.method[setting]
     signal.size <- settings$signal.size[setting]
     correlated <- settings$correlated[setting]
+    methods <- methods.by.setting[[setting]]
     type <- if (scenario == "one.flipped.study") "random" else "fixed"
     direct <- if (type == "random") "both" else NULL
     # At the null, either signal mechanism with size zero produces no signal.
     generation.signal <- if (signal.method == "none") "proportion" else signal.method
-    tag <- paste(lineage.name, simulation.target, scenario, signal.method, sep = "_")
-    message(tag, ": ", sim.time, " replicates; six bootstrap and 12 comparator methods")
+    tag <- paste(lineage.name, target.tag, scenario, signal.method, sep = "_")
+    message(tag, ": ", sim.time, " replicates; six bootstrap and ",
+            length(methods) - length(meta.methods), " comparator methods")
     started <- proc.time()[["elapsed"]]
     results <- parallel::mclapply(seq_len(sim.time), run_simulation_replicate,
       signal.size = signal.size, signal.method = generation.signal,
@@ -119,6 +156,10 @@ if (!isTRUE(getOption("crc.simulation.source.only", FALSE))) {
     rows$signal.method <- signal.method
     rows$signal.size <- signal.size
     rows$setting_wall_time_sec <- wall.seconds
+    if (simulation.target == "power_cluster") {
+      rows$design <- "correlated"
+      rows$n_perm_requested <- rows$n_perm_configured
+    }
 
     # Failures remain NA in replicate tables, and count as nonrejections here.
     # Wilson intervals quantify finite-replicate Monte Carlo uncertainty.
@@ -156,19 +197,24 @@ if (!isTRUE(getOption("crc.simulation.source.only", FALSE))) {
         mean_replicate_runtime_sec = mean(r$replicate_runtime_seconds),
         setting_wall_time_sec = wall.seconds, stringsAsFactors = FALSE)
     }))
-    write.csv(rows, file.path(output.dir, paste0(tag, "_pvalues.csv")), row.names = FALSE)
-    write.csv(table, file.path(output.dir, paste0(tag, "_summary.csv")), row.names = FALSE)
+    if (simulation.target == "power_cluster") {
+      table$design <- "correlated"
+      table$power <- table$rejection_rate
+      table$n_perm_requested <- table$n_perm_configured
+    }
+    write.csv(rows, file.path(output.dir, paste0(tag, pvalue.suffix)), row.names = FALSE)
+    write.csv(table, file.path(output.dir, paste0(tag, summary.suffix)), row.names = FALSE)
     write.csv(rows[rows$failed | rows$partial_study_failure, ],
               file.path(output.dir, paste0(tag, "_failures.csv")), row.names = FALSE)
     saveRDS(list(configuration = configuration, results = results, rows = rows),
             file.path(output.dir, paste0(tag, "_results.rds")))
     all.rows[[tag]] <- rows
     summary.rows[[tag]] <- table
-    prefix <- paste0(lineage.name, "_", simulation.target)
+    prefix <- paste0(lineage.name, "_", target.tag)
     write.csv(do.call(rbind, all.rows), file.path(output.dir,
-      paste0(prefix, "_pvalues.csv")), row.names = FALSE)
+      paste0(prefix, pvalue.suffix)), row.names = FALSE)
     write.csv(do.call(rbind, summary.rows), file.path(output.dir,
-      paste0(prefix, "_summary.csv")), row.names = FALSE)
+      paste0(prefix, summary.suffix)), row.names = FALSE)
     saveRDS(list(configuration = configuration, pvalues = do.call(rbind, all.rows),
       summary = do.call(rbind, summary.rows)), file.path(output.dir,
         paste0(prefix, "_results.rds")))

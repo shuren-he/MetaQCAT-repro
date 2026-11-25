@@ -20,8 +20,6 @@ result.dir <- if (!nzchar(selected.dir)) default.result.dir else if (
     file.path(project.dir, selected.dir)
 data.file <- file.path(project.dir, "res", "IBD", "wild_score_bootstrap",
                        "IBD_processed_bootstrap.RData")
-combined.file <- file.path(project.dir, "res", "IBD",
-                           "IBD_lineage_combine.csv")
 fe.file <- file.path(project.dir, "res", "IBD", "wild_score_bootstrap",
                      "IBD_primary_FE_MetaQCAT_O.rds")
 re.file <- file.path(project.dir, "res", "IBD", "wild_score_bootstrap",
@@ -47,14 +45,6 @@ if (!all(vapply(dat$design, function(x) "disease" %in% colnames(x),
   stop("The tested disease variable must be the first adjusted-design column.")
 }
 
-combined <- utils::read.csv(combined.file, check.names = TRUE)
-if (ncol(combined) != 15L ||
-    anyDuplicated(combined$lineage[nzchar(combined$lineage)]) ||
-    !all(families %in% combined$lineage) ||
-    !all(combined$method[nzchar(combined$lineage)] == "FE-MetaQCAT-O") ||
-    !all(combined$method.1[nzchar(combined$lineage)] == "RE-MetaQCAT-O")) {
-  stop("Unexpected latest IBD combined-lineage table format.")
-}
 fe <- readRDS(fe.file)
 re <- readRDS(re.file)
 fe.row <- "Bootstrap-FE-MetaQCAT-O"
@@ -65,15 +55,15 @@ if (!all(families %in% colnames(fe$lineage.pval)) ||
     !re.row %in% rownames(re$lineage.pval)) {
   stop("Selected families are missing from the current IBD FE/RE results.")
 }
-selected <- combined[match(families, combined$lineage), ]
-close.enough <- function(x, y) all(is.finite(x) & is.finite(y) &
-                                    abs(x - y) < 1e-7)
-if (!close.enough(selected$p, fe$lineage.pval[fe.row, families]) ||
-    !close.enough(selected$q, fe$lineage.qval[fe.row, families]) ||
-    !close.enough(selected$p.1, re$lineage.pval[re.row, families]) ||
-    !close.enough(selected$q.1, re$lineage.qval[re.row, families])) {
-  stop("Combined IBD p/q values differ from the current FE/RE RDS results.")
-}
+# Read current FE/RE directly; no old fixed-position comparator table is needed.
+selected <- data.frame(
+  lineage = families,
+  p = unname(fe$lineage.pval[fe.row, families]),
+  q = unname(fe$lineage.qval[fe.row, families]),
+  p.1 = unname(re$lineage.pval[re.row, families]),
+  q.1 = unname(re$lineage.qval[re.row, families]))
+if (any(!is.finite(as.matrix(selected[-1L]))))
+  stop("Selected families do not have finite current FE/RE results.")
 
 meta.sub <- new.env(parent = globalenv())
 sys.source(file.path(project.dir, "code", "MetaSub.R"), envir = meta.sub)

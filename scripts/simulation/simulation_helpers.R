@@ -1,4 +1,4 @@
-# Shared statistical calculations for the four paper simulation entrypoints.
+# Shared statistical calculations for the six paper simulation entrypoints.
 # The generator is the current study-mean-depth experiment. All methods receive
 # the same generated counts, labels, retained rows and taxon identities.
 
@@ -420,10 +420,170 @@ evaluate_comparators <- function(simulated, sim.cnt) {
   do.call(rbind, output)
 }
 
+# Native cluster-QCAT calls for correlated null and power settings.
+# BTW internally concatenates clusters, so sort Y/X/ID jointly before calling.
+# All-zero composition rows are retained for the observed-zero component.
+run_cluster_qcat <- function(y, x, id, two.part = FALSE) {
+  warnings <- character()
+  fit <- tryCatch(withCallingHandlers({
+    y <- as.matrix(y)
+    x <- as.matrix(x)
+    id <- as.character(id)
+    if (!nrow(y)) stop("No samples.")
+    if (nrow(y) != nrow(x) || nrow(y) != length(id))
+      stop("Count rows, covariate rows and cluster IDs must align.")
+    order.id <- order(id, rownames(y), method = "radix")
+    y <- y[order.id, , drop = FALSE]
+    x <- x[order.id, , drop = FALSE]
+    id <- factor(id[order.id])
+    if (anyNA(x) || anyNA(id) || length(unique(x[, 1L])) != 2L)
+      stop("Disease must be observed and variable after sample screening.")
+    if (any(vapply(split(x[, 1L], id), function(z)
+      length(unique(z)) != 1L, logical(1))))
+      stop("BTW permutation requires disease to be constant within each cluster.")
+    if (sum(colSums(y) > 0) < 2L) stop("Fewer than two observed taxa.")
+    if (two.part) {
+      miLineage::QCAT_GEE.Cluster(
+        ID = id, OTU = y, X = x, X.index = 1L, Z = x, Z.index = 1L,
+        Tax = NULL, min.depth = 0, perm.type = "BTW",
+        n.perm = n.perm, test = "chisq")
+    } else {
+      miLineage::QCAT.Cluster(
+        ID = id, OTU = y, X = x, X.index = 1L,
+        Tax = NULL, min.depth = 0, perm.type = "BTW",
+        n.perm = n.perm, test = "chisq")
+    }
+  }, warning = function(w) {
+    warnings <<- c(warnings, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  }, message = function(m) invokeRestart("muffleMessage")), error = identity)
+  p <- c(Asymptotic = NA_real_, Resampling = NA_real_)
+  reason <- ""
+  if (inherits(fit, "error")) reason <- conditionMessage(fit) else {
+    value <- tryCatch(unlist(fit$pval), error = function(e) NULL)
+    if (!is.numeric(value) || is.null(names(value))) {
+      reason <- "Native QCAT returned no named numeric p-values."
+    } else {
+      p[] <- value[match(names(p), names(value))]
+      if (any(!is.finite(p))) reason <- "Native QCAT returned nonfinite p-values."
+    }
+  }
+  bad <- !is.finite(p) | p < 0 | p > 1
+  p[bad] <- NA_real_
+  list(p = p, error = reason,
+       warning = paste(unique(warnings), collapse = " | "))
+}
+
+# Same result schema as evaluate_comparators(), but only six cluster-aware
+# QCAT tests. No generation occurs here; independent tests stay above.
+evaluate_cluster_comparators <- function(simulated, sim.cnt) {
+  if (!isTRUE(simulated$correlated))
+    stop("Cluster comparators require the correlated-sample generator.")
+  counts <- setNames(simulated$OTU, study.names)
+  designs <- setNames(simulated$X, study.names)
+  ids <- setNames(lapply(simulated$cluster, factor), study.names)
+  for (s in seq_along(counts)) {
+    rownames(counts[[s]]) <- rownames(designs[[s]]) <-
+      paste0(study.names[s], "_sample", simulated$keep[[s]])
+    colnames(designs[[s]]) <- "disease"
+    if (length(ids[[s]]) != nrow(counts[[s]]))
+      stop("Generated cluster IDs do not align with count rows.")
+  }
+  pooled <- do.call(rbind, unname(counts))
+  pooled.X <- do.call(rbind, unname(designs))
+  # Prefix cluster IDs to prevent distinct studies sharing a pooled subject.
+  pooled.ids <- factor(unlist(Map(function(study, id)
+    paste(study, as.character(id), sep = "::"), names(ids), ids),
+    use.names = FALSE))
+  metadata <- data.frame(
+    Country = factor(rep(study.names, vapply(counts, nrow, integer(1)))),
+    Group = factor(ifelse(pooled.X[, 1L] == 1, "case", "control")),
+    row.names = rownames(pooled))
+  output <- vector("list", 6L)
+  at <- 0L
+  for (strategy in c("P", "CD", "RD")) {
+    set.seed(seed + sim.cnt)
+    preparation.started <- proc.time()[["elapsed"]]
+    tables <- if (strategy == "P") counts else list(pooled)
+    X <- if (strategy == "P") designs else list(pooled.X)
+    clusters <- if (strategy == "P") ids else list(pooled.ids)
+    preparation.error <- ""
+    if (strategy == "CD") {
+      corrected <- tryCatch(MMUPHin::adjust_batch(
+        feature_abd = t(pooled), batch = "Country", covariates = "Group",
+        data = metadata,
+        control = list(verbose = FALSE, diagnostic_plot = NULL))$feature_abd_adj,
+        error = identity)
+      if (inherits(corrected, "error"))
+        preparation.error <- conditionMessage(corrected) else
+        tables[[1L]] <- t(corrected)
+    }
+    preparation.seconds <- proc.time()[["elapsed"]] - preparation.started
+
+    # Raw counts for QCAT.Cluster; rarefy each study (P) or pooled table (CD/RD)
+    # once before QCAT_GEE.Cluster. Keep the generated rows and IDs aligned.
+    rarefaction.started <- proc.time()[["elapsed"]]
+    set.seed(seed + sim.cnt)
+    rarefied <- if (!nzchar(preparation.error))
+      tryCatch(lapply(tables, MetaQCAT:::.rarefy_counts), error = identity) else NULL
+    rarefaction.error <- if (inherits(rarefied, "error"))
+      conditionMessage(rarefied) else ""
+    rarefaction.seconds <- proc.time()[["elapsed"]] - rarefaction.started
+    for (test in c("QCAT.Cluster", "QCAT_GEE.Cluster")) {
+      at <- at + 1L
+      two.part <- test == "QCAT_GEE.Cluster"
+      p.study <- matrix(NA_real_, length(tables), 2L,
+        dimnames = list(names(tables), c("Asymptotic", "Resampling")))
+      errors <- warnings <- character()
+      started <- proc.time()[["elapsed"]]
+      if (nzchar(preparation.error)) errors <- preparation.error else if (
+        two.part && nzchar(rarefaction.error)) errors <- rarefaction.error else {
+        for (s in seq_along(tables)) {
+          value <- run_cluster_qcat(
+            if (two.part) rarefied[[s]] else tables[[s]],
+            X[[s]], clusters[[s]], two.part = two.part)
+          p.study[s, ] <- value$p
+          if (nzchar(value$error))
+            errors <- c(errors, paste0("study ", s, ": ", value$error))
+          if (nzchar(value$warning)) warnings <- c(warnings, value$warning)
+        }
+      }
+      valid.study <- is.finite(p.study[, "Resampling"])
+      combined <- if (strategy == "P") F.test(p.study[, "Resampling"]) else
+        p.study[1L, "Resampling"]
+      combined.asy <- if (strategy == "P") F.test(p.study[, "Asymptotic"]) else
+        p.study[1L, "Asymptotic"]
+      failed <- !is.finite(combined) || combined < 0 || combined > 1
+      reason <- paste(unique(errors), collapse = " | ")
+      if (failed && !nzchar(reason)) reason <- "No valid resampling p-value."
+      output[[at]] <- data.frame(
+        method = paste0(strategy, "-", test, " (perm)"),
+        resampling_p = combined, asymptotic_p = combined.asy, failed = failed,
+        error = reason, warning = paste(unique(warnings), collapse = " | "),
+        n_boot_requested = 0L, n_boot_completed = 0L,
+        n_perm_configured = n.perm,
+        # Native adaptive completed permutation counts are not returned.
+        n_perm_completed = NA_integer_, n_perm_tests = length(tables),
+        n_studies_used = sum(valid.study),
+        partial_study_failure = strategy == "P" && any(valid.study) && any(!valid.study),
+        method_runtime_seconds = proc.time()[["elapsed"]] - started +
+          preparation.seconds + if (two.part) rarefaction.seconds else 0,
+        null_fit_seconds = NA_real_, bootstrap_seconds = NA_real_,
+        stringsAsFactors = FALSE)
+    }
+  }
+  # P calls permute within studies; native CD/RD BTW calls permute across the
+  # pooled clusters. Native functions do not accept an extra study block.
+  do.call(rbind, output)
+}
+
 # The only generation call in the complete all-method replicate workflow.
 run_simulation_replicate <- function(sim.cnt, signal.size, signal.method,
                                      type, direct, correlated = FALSE) {
   started <- proc.time()[["elapsed"]]
+  cluster.mode <- isTRUE(correlated)
+  methods <- c(meta.methods, if (cluster.mode)
+    cluster.baseline.methods else baseline.methods)
   rows <- data.frame(
     method = methods, resampling_p = NA_real_, asymptotic_p = NA_real_,
     failed = TRUE, error = "", warning = "", n_boot_requested = 0L,
@@ -435,7 +595,8 @@ run_simulation_replicate <- function(sim.cnt, signal.size, signal.method,
   rows$n_boot_requested[match(meta.methods, rows$method)] <- n.boot
   baseline.index <- !rows$method %in% meta.methods
   rows$n_perm_configured[baseline.index] <- n.perm
-  rows$n_perm_configured[rows$method == "RD-DM (perm)"] <- n.perm.rd.dm
+  if (!cluster.mode)
+    rows$n_perm_configured[rows$method == "RD-DM (perm)"] <- n.perm.rd.dm
   simulated <- tryCatch(simulate_crc_data(
     sim.cnt, mod_gdm_lst, depth.pool, taxa.names, lst.num,
     signal.size, signal.method, type, direct, seed, correlated),
@@ -454,13 +615,25 @@ run_simulation_replicate <- function(sim.cnt, signal.size, signal.method,
     result$n_perm_tests <- 0L
     result$n_studies_used <- ifelse(result$failed, 0L, length(study.names))
     common <- intersect(names(rows), names(result))
-    rows[match(result$method, rows$method), common] <- result[common]
-    comparator <- evaluate_comparators(simulated, sim.cnt)
-    rows[match(comparator$method, rows$method), names(comparator)] <- comparator
+    index <- match(result$method, rows$method)
+    if (anyNA(index) || anyDuplicated(index) ||
+        !setequal(result$method, meta.methods))
+      stop("MetaQCAT method rows do not match the configured simulation methods.")
+    rows[index, common] <- result[common]
+    comparator <- if (cluster.mode)
+      evaluate_cluster_comparators(simulated, sim.cnt) else
+      evaluate_comparators(simulated, sim.cnt)
+    index <- match(comparator$method, rows$method)
+    expected <- if (cluster.mode) cluster.baseline.methods else baseline.methods
+    if (anyNA(index) || anyDuplicated(index) ||
+        !setequal(comparator$method, expected))
+      stop("Comparator rows do not match the configured simulation methods.")
+    rows[index, names(comparator)] <- comparator
   }
   rows$replicate <- sim.cnt
   rows$calibration <- ifelse(rows$method %in% meta.methods,
-                             "wild-score bootstrap", "permutation")
+    "wild-score bootstrap", if (cluster.mode)
+      "between-cluster permutation" else "permutation")
   rows$generation_seconds <- generation.seconds
   rows$replicate_runtime_seconds <- proc.time()[["elapsed"]] - started
   rows$n_samples <- if (inherits(simulated, "error")) NA_integer_ else

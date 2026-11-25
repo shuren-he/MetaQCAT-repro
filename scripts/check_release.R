@@ -30,12 +30,28 @@ expected <- c("scripts/real_data/crc/CRC_all_methods.R",
               "scripts/real_data/ibd/IBD_all_methods.R")
 if (!setequal(entrypoints, expected))
   stop("Keep exactly one CRC and one IBD real-data entrypoint.")
+# These ten frozen source inputs are required release assets.
+# This is not a blanket exception for output RDS files or arbitrary data.
+allowed.inputs <- c(
+  "real/CRC/data/count.genus.RData", "real/CRC/data/meta.RData",
+  "real/CRC/data/tax.RData", "real/IBD/data/count.genus.RData",
+  "real/IBD/data/meta.RData", "real/IBD/data/tax.RData",
+  "simulation/data/count.genus.rda", "simulation/data/meta.rda",
+  "simulation/data/mod_gdm_lst_Enterobacteriaceae.RData",
+  "simulation/data/mod_gdm_lst_Peptostreptococcaceae.RData")
+missing.inputs <- allowed.inputs[!file.exists(file.path(project.dir, allowed.inputs))]
+if (length(missing.inputs))
+  stop("Missing frozen release inputs: ", paste(missing.inputs, collapse = ", "))
 binary.data <- files[grepl("[.](rda|RData|rds|Rdata)$", files)]
-outside.packages <- binary.data[!grepl("^(packages|vendor)/", binary.data)]
+outside.packages <- binary.data[!grepl("^(packages|vendor)/", binary.data) &
+                                  !binary.data %in% allowed.inputs]
 if (length(outside.packages)) stop("Non-package data found: ",
                                    paste(outside.packages, collapse = ", "))
 
 cat("R files parsed:", length(r.files), "\n")
-cat("Package example-data files:", length(binary.data), "\n")
-cat("No external analysis data/results or compiled/session artifacts found.\n")
+cat("Package/vendor data files:",
+    sum(grepl("^(packages|vendor)/", binary.data)), "\n")
+cat("Bundled frozen analysis inputs:",
+    sum(binary.data %in% allowed.inputs), "\n")
+cat("No unlisted data, analysis results or compiled/session artifacts found.\n")
 

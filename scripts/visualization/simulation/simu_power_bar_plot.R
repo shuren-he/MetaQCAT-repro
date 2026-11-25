@@ -2,7 +2,7 @@
 # Run from the repository root:
 # Rscript scripts/visualization/simulation/simu_power_bar_plot.R
 
-required <- c("ggplot2", "patchwork", "scales")
+required <- c("ggplot2", "patchwork", "scales", "gtable")
 missing <- required[!vapply(required, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing)) {
   stop("Install required packages: ", paste(missing, collapse = ", "), call. = FALSE)
@@ -136,7 +136,7 @@ palette <- c(
   "QCAT2" = "#8B6BB1",       # purple
   "MetaQCAT" = "#E69F00",    # orange
   "MetaQCAT*" = "#D55E00",   # vermilion
-  "MetaQCAT-O" = "#CC6677"   # rose
+  "MetaQCAT-O" = "#5C3317"   # deep brown
 )
 
 # Peptostreptococcaceae occupies the first row, Enterobacteriaceae the second.
@@ -186,13 +186,14 @@ make_power_panel <- function(signal, scenario, taxon, show_y_title) {
       plot.background = ggplot2::element_rect(fill = "white", colour = NA),
       panel.background = ggplot2::element_rect(fill = "white", colour = NA),
       panel.grid = ggplot2::element_blank(),
+      aspect.ratio = 1,
       panel.border = ggplot2::element_rect(fill = NA, colour = "black",
                                             linewidth = 0.8),
       axis.line = ggplot2::element_blank(),
       axis.ticks.x = ggplot2::element_blank(),
-      axis.text.x = ggplot2::element_text(face = "bold", size = 17,
+      axis.text.x = ggplot2::element_text(face = "bold", size = 22.95,
                                            colour = "#273444"),
-      axis.text.y = ggplot2::element_text(face = "bold", size = 16,
+      axis.text.y = ggplot2::element_text(face = "bold", size = 21.6,
                                            colour = "#273444"),
       axis.title.y = ggplot2::element_text(face = "bold", size = 19,
                                             colour = "#273444",
@@ -218,11 +219,58 @@ panels <- lapply(seq_len(nrow(panel_specs)), function(i) {
 combined <- patchwork::wrap_plots(panels, ncol = 4, guides = "collect") &
   ggplot2::theme(legend.position = "bottom")
 
+# Add labels around the existing square panels, without changing their data,
+# y scales, method order, black outlines, or collected bottom legend.
+grDevices::pdf(file = NULL, width = 21, height = 12)
+layout.device <- grDevices::dev.cur()
+combined <- tryCatch(patchwork::patchworkGrob(combined),
+  finally = grDevices::dev.off(layout.device))
+panel.respect <- combined$respect
+combined <- gtable::gtable_add_rows(
+  combined, grid::unit(c(0.44, 0.38), "in"), pos = 0)
+combined <- gtable::gtable_add_cols(
+  combined, grid::unit(0.60, "in"), pos = 0)
+if (is.matrix(panel.respect))
+  combined$respect <- rbind(matrix(0, nrow = 2L, ncol = ncol(panel.respect) + 1L),
+                           cbind(0, panel.respect))
+panel.cells <- combined$layout[
+  startsWith(combined$layout$name, "panel;") |
+    grepl("^panel-[0-9]+$", combined$layout$name), , drop = FALSE]
+panel.number <- as.integer(sub(".*-", "", panel.cells$name))
+panel.cells <- panel.cells[match(seq_len(8L), panel.number), , drop = FALSE]
+stopifnot(nrow(panel.cells) == 8L, !anyNA(panel.cells$l))
+
+for (group in seq_len(2L)) {
+  columns <- if (group == 1L) 1:2 else 3:4
+  combined <- gtable::gtable_add_grob(combined,
+    grid::textGrob(c("Low heterogeneity", "High heterogeneity")[group],
+      gp = grid::gpar(fontfamily = "sans", fontface = "bold", fontsize = 28)),
+    t = 1, b = 1, l = panel.cells$l[columns[1L]],
+    r = panel.cells$r[columns[2L]], clip = "off",
+    name = paste0("heterogeneity-header-", group))
+}
+for (column in seq_len(4L)) {
+  combined <- gtable::gtable_add_grob(combined,
+    grid::textGrob(rep(c("Small ZP change", "Large ZP change"), 2L)[column],
+      gp = grid::gpar(fontfamily = "sans", fontface = "bold", fontsize = 25)),
+    t = 2, b = 2, l = panel.cells$l[column], r = panel.cells$r[column],
+    clip = "off", name = paste0("zp-header-", column))
+}
+for (row in seq_len(2L)) {
+  cells <- (row - 1L) * 4L + seq_len(4L)
+  combined <- gtable::gtable_add_grob(combined,
+    grid::textGrob(taxa[row], rot = 90,
+      gp = grid::gpar(fontfamily = "sans", fontface = "bold.italic",
+                     fontsize = 27)),
+    t = min(panel.cells$t[cells]), b = max(panel.cells$b[cells]),
+    l = 1, r = 1, clip = "off", name = paste0("family-row-label-", row))
+}
+
 png_path <- file.path(plot_dir, "simu_res_power.png")
 pdf_path <- file.path(plot_dir, "simu_res_power.pdf")
-ggplot2::ggsave(png_path, combined, width = 21, height = 11.1,
+ggplot2::ggsave(png_path, combined, width = 21, height = 12.0,
                 units = "in", dpi = 300, bg = "white")
-ggplot2::ggsave(pdf_path, combined, width = 21, height = 11.1,
+ggplot2::ggsave(pdf_path, combined, width = 21, height = 12.0,
                 units = "in", device = grDevices::cairo_pdf, bg = "white")
 
 csv_path <- file.path(plot_dir, "simu_res_power_plot_data.csv")
