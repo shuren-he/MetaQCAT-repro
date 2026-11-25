@@ -4,7 +4,7 @@
 source(file.path("R", "project_paths.R"), local = TRUE)
 
 ## 1. Paper settings ----------------------------------------------------------
-min.depth <- 3000L             # retain raw sample depth strictly greater than 3000
+min.depth <- 2999L             # remove raw sample depth less than 3000
 max.zero.fraction <- 0.90
 min.prev <- 0.10               # MetaQCAT component-specific prevalence filter
 n.boot <- 1000L
